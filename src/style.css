@@ -1,0 +1,22 @@
+@import "tailwindcss";
+
+@theme {
+  --color-paper: #f8f8f3;
+  --color-ink: #172923;
+  --color-pine: #174637;
+  --color-mint: #d9efdf;
+  --font-sans: "DM Sans", system-ui, sans-serif;
+  --font-serif: "Instrument Serif", Georgia, serif;
+}
+
+@font-face {
+  font-family: "Instrument Serif";
+  src: local("Instrument Serif");
+}
+
+body { margin: 0; }
+
+.agenda-pattern {
+  background-image: linear-gradient(#ffffff0b 1px, transparent 1px), linear-gradient(90deg, #ffffff0b 1px, transparent 1px);
+  background-size: 48px 48px;
+}
