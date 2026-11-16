@@ -1,44 +1,125 @@
-import React, { useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import { authenticate, createAccount } from './api.jsx'
+import { authenticate, clearSession, getCurrentUser, readSession } from './api.jsx'
 import './style.css'
+import Users from './users/Users.jsx'
 
 const inputClass = 'w-full rounded-xl border border-ink/20 bg-white px-4 py-3.5 text-sm text-ink outline-none focus:border-pine focus:ring-2 focus:ring-pine/25'
 
 function App() {
-  const [register, setRegister] = useState(false)
-  const [feedback, setFeedback] = useState(null)
+  const [user, setUser] = useState(null)
+  const [checking, setChecking] = useState(true)
   const [visible, setVisible] = useState(false)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
-  const [notice, setNotice] = useState('')
+  const [hash, setHash] = useState(window.location.hash)
+  const generation = useRef(0)
+
+  useEffect(() => {
+    const changed = () => setHash(window.location.hash)
+    window.addEventListener('hashchange', changed)
+    return () => window.removeEventListener('hashchange', changed)
+  }, [])
+
+  const onForbidden = useCallback(async () => {
+    const version = generation.current
+    try {
+      const current = await getCurrentUser()
+      if (version !== generation.current) return
+      setUser(current)
+      setError('Você não tem permissão para realizar esta operação.')
+    } catch (problem) {
+      if (version === generation.current) setError(problem.message)
+    }
+  }, [])
+
+  const onSelfChange = useCallback(async () => {
+    const version = generation.current
+    const current = await getCurrentUser()
+    if (version === generation.current) setUser(current)
+  }, [])
+
+  useEffect(() => {
+    let active = true
+    const version = generation.current
+    if (!readSession()) {
+      setChecking(false)
+      return
+    }
+    getCurrentUser().then(current => { if (active && version === generation.current) setUser(current) })
+      .catch(problem => { if (active && version === generation.current) setError(problem.message) })
+      .finally(() => { if (active) setChecking(false) })
+    return () => { active = false }
+  }, [])
+
+  useEffect(() => {
+    function expired() {
+      generation.current += 1
+      clearSession()
+      setUser(null)
+      setError('Sua sessão expirou. Entre novamente.')
+    }
+    window.addEventListener('session-expired', expired)
+    const session = user ? readSession() : null
+    let timer
+    if (user && !session) expired()
+    else if (session) timer = window.setTimeout(expired, Math.max(0, session.expiresAt - Date.now()))
+    return () => {
+      window.removeEventListener('session-expired', expired)
+      window.clearTimeout(timer)
+    }
+  }, [user])
 
   async function submit(event) {
     event.preventDefault()
     const fields = new FormData(event.currentTarget)
     setError('')
-    setNotice('')
-    setFeedback(null)
     setBusy(true)
     try {
-      if (!register) {
-        const valid = await authenticate({ email: fields.get('email'), password: fields.get('password') })
-        setFeedback({ valid, message: valid ? 'Credenciais válidas.' : 'E-mail ou senha incorretos.' })
-        return
-      }
-      await createAccount({
-        name: fields.get('name'),
-        email: fields.get('email'),
-        password: fields.get('password'),
-      })
-      event.target.reset()
-      setNotice('Conta criada com sucesso.')
+      await authenticate({ email: fields.get('email'), password: fields.get('password') })
+      setUser(await getCurrentUser())
+      setVisible(false)
     } catch (problem) {
-      if (register) setError(problem.message)
-      else setFeedback({ valid: false, message: problem.message })
+      setError(problem.message)
     } finally {
       setBusy(false)
     }
+  }
+
+  function logout() {
+    generation.current += 1
+    clearSession()
+    setUser(null)
+    setVisible(false)
+    setError('')
+    window.location.hash = ''
+  }
+
+  if (!checking && user) {
+    const admin = user.perfil === 'ADMIN'
+    const usersPage = hash.startsWith('#/usuarios')
+    return <main className="min-h-dvh bg-paper text-ink">
+      <header className="border-b border-ink/15 bg-pine text-white">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-5 py-5 md:px-8">
+          <a href="#/" className="flex items-center gap-3 font-semibold"><span aria-hidden="true" className="grid size-9 place-items-center rounded-xl bg-mint text-2xl text-pine">+</span>Agenda Médica</a>
+          <nav aria-label="Navegação principal" className="flex flex-wrap items-center gap-5 text-sm">
+            <a href="#/" aria-current={!usersPage ? 'page' : undefined} className="hover:underline">Início</a>
+            {admin && <a href="#/usuarios" aria-current={usersPage ? 'page' : undefined} className="font-semibold hover:underline">Usuários</a>}
+            <span>{user.nome} · {user.perfil}</span>
+            <button onClick={logout} className="rounded-xl border border-white/40 px-4 py-2 hover:bg-white/10">Sair</button>
+          </nav>
+        </div>
+      </header>
+      <div className="mx-auto max-w-6xl px-5 py-10 md:px-8">
+        {error && <p role="alert" className="mb-5 rounded-xl bg-red-50 p-4 text-sm text-red-800">{error}</p>}
+        {admin && usersPage ? <Users key={user.id} hash={hash} user={user} onForbidden={onForbidden} onSelfChange={onSelfChange} /> : <>
+          {!admin && usersPage && <p role="alert" className="mb-5 rounded-xl bg-red-50 p-4 text-sm text-red-800">A administração de usuários é exclusiva do perfil ADMIN.</p>}
+          <h1 className="font-serif text-4xl md:text-5xl">Olá, {user.nome}</h1>
+          <p className="mt-5 text-ink/75">Você está conectado à Agenda Médica.</p>
+          {admin && <a href="#/usuarios" className="mt-8 inline-block rounded-xl bg-pine px-5 py-3 text-sm font-semibold text-white hover:bg-ink">Gerenciar usuários</a>}
+        </>}
+      </div>
+    </main>
   }
 
   return (
@@ -58,55 +139,31 @@ function App() {
         </div>
         <p className="hidden border-t border-white/20 pt-5 text-sm text-mint md:block">Gestão de consultas</p>
       </aside>
-
       <section className="flex items-center justify-center px-2 py-12 md:px-8">
         <div className="w-full max-w-sm">
-            <h1 className="font-serif text-5xl tracking-tight">{register ? 'Crie sua conta' : 'Bem-vindo'}</h1>
-            <p className="mt-3 text-sm text-ink/75">{register ? 'Informe seus dados para criar sua conta.' : 'Informe seu e-mail e sua senha.'}</p>
-            <form key={String(register)} onChange={() => setFeedback(null)} onSubmit={submit} className="mt-9 grid gap-5">
-              
-                {register && <div>
-                  <label htmlFor="name" className="mb-2 block text-sm font-semibold">Nome</label>
-                  <input className={inputClass} id="name" name="name" autoComplete="name" maxLength={120} required />
-                </div>}
-      
+          {checking ? <p role="status">Verificando sua sessão…</p> : <>
+            <h1 className="font-serif text-5xl tracking-tight">Bem-vindo</h1>
+            <p className="mt-3 text-sm text-ink/75">Informe seu e-mail e sua senha.</p>
+            <form onSubmit={submit} onChange={() => setError('')} className="mt-9 grid gap-5">
               <div>
                 <label htmlFor="email" className="mb-2 block text-sm font-semibold">E-mail</label>
-                <input className={inputClass} id="email" name="email" type="email" autoComplete="email" maxLength={254} placeholder="nome@exemplo.com" required />
+                <input className={inputClass} id="email" name="email" type="email" autoComplete="username" maxLength={254} placeholder="nome@exemplo.com" required disabled={busy} />
               </div>
               <div>
                 <label htmlFor="password" className="mb-2 block text-sm font-semibold">Senha</label>
                 <div className="relative">
-                  <input className={`${inputClass} pr-24`} id="password" name="password" type={visible ? 'text' : 'password'} autoComplete={register ? "new-password" : "current-password"} minLength={register ? 8 : undefined} maxLength={72} required />
+                  <input className={`${inputClass} pr-24`} id="password" name="password" type={visible ? 'text' : 'password'} autoComplete="current-password" maxLength={72} required disabled={busy} />
                   <button type="button" className="absolute inset-y-0 right-0 px-4 text-sm font-semibold text-pine hover:underline" onClick={() => setVisible(!visible)}>{visible ? 'Ocultar' : 'Mostrar'}</button>
                 </div>
-                {register && <p className="mt-2 text-xs text-ink/70">Use pelo menos 8 caracteres.</p>}
               </div>
-              {notice && <p role="status" className="rounded-lg bg-mint p-3 text-sm">{notice}</p>}
               {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800">{error}</p>}
-              <div className="relative pb-2"><button aria-describedby={feedback ? "login-feedback" : undefined} disabled={busy} className="w-full mt-1 rounded-xl bg-pine px-5 py-3.5 text-sm font-semibold text-white transition-colors hover:bg-ink disabled:opacity-60">{busy ? 'Aguarde…' : register ? 'Criar conta' : 'Entrar'}</button>
-                <div role="status" aria-live="polite">
-                  {feedback && <p id="login-feedback" className={`relative mt-2 rounded-lg px-3 py-2 text-sm before:absolute before:-top-1 before:left-5 before:size-2 before:rotate-45 before:bg-inherit before:content-[""] ${feedback.valid ? 'bg-mint text-pine' : 'bg-red-50 text-red-800'}`}>{feedback.message}</p>}
-                </div>
-              </div>
+              <button disabled={busy} className="mt-1 w-full rounded-xl bg-pine px-5 py-3.5 text-sm font-semibold text-white hover:bg-ink disabled:opacity-60">{busy ? 'Aguarde…' : 'Entrar'}</button>
             </form>
-            <button type="button" disabled={busy} className="mt-5 text-sm font-semibold text-pine underline" onClick={() => {
-              setRegister(!register)
-              setVisible(false)
-              setFeedback(null)
-              setNotice('')
-              setError('')
-            }}>{register ? 'Voltar ao login' : 'Criar conta'}</button>
-            {register && <a className="ml-4 mt-6 inline-block text-sm font-semibold text-pine underline" href="/login">Autenticar no Spring Security</a>}
-          </div>
-
+          </>}
+        </div>
       </section>
     </main>
   )
 }
 
 createRoot(document.getElementById('root')).render(<App />)
-
-
-
-
