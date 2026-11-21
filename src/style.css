@@ -20,3 +20,34 @@ body { margin: 0; }
   background-image: linear-gradient(#ffffff0b 1px, transparent 1px), linear-gradient(90deg, #ffffff0b 1px, transparent 1px);
   background-size: 48px 48px;
 }
+
+@keyframes side-panel-enter {
+  from { left: 100%; }
+  to { left: 0; }
+}
+
+@keyframes side-panel-backdrop-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.side-panel > aside {
+  position: relative;
+  left: 0;
+}
+
+.side-panel[open] > aside {
+  animation: side-panel-enter 240ms ease-out both;
+}
+
+.side-panel[open]::backdrop {
+  animation: side-panel-backdrop-enter 280ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .side-panel[open] > aside,
+  .side-panel[open]::backdrop {
+    animation: none;
+  }
+}
+

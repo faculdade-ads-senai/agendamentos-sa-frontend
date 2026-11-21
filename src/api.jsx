@@ -1,5 +1,10 @@
+import { mockRequest, listMockLoginUsers, mockLoginCredentials } from './mock.js'
+
+// true usa mock.json. false usa a API real.
+export const USE_MOCK = true
+
 const baseUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
-const storageKey = 'agenda-sa.session'
+const storageKey = USE_MOCK ? 'agenda-sa.mock-session' : 'agenda-sa.session'
 
 export class ApiError extends Error {
   constructor(message, status) {
@@ -39,7 +44,9 @@ export async function request(path, { authenticated = true, ...options } = {}) {
 
   let response
   try {
-    response = await fetch(`${baseUrl}${path}`, { ...options, headers, cache: 'no-store' })
+    response = USE_MOCK
+      ? await mockRequest(path, { ...options, headers })
+      : await fetch(`${baseUrl}${path}`, { ...options, headers, cache: 'no-store' })
   } catch {
     throw new ApiError('Não foi possível conectar ao servidor. Tente novamente.', 0)
   }
@@ -97,3 +104,89 @@ export function saveUser(values, id) {
 export function deactivateUser(id) {
   return request(`/api/v1/usuarios/${id}`, { method: 'DELETE' })
 }
+
+
+export function getMockLoginUsers() {
+  return USE_MOCK ? listMockLoginUsers() : []
+}
+
+export function authenticateMockUser(id) {
+  const credentials = USE_MOCK ? mockLoginCredentials(id) : null
+  if (!credentials) throw new ApiError('Selecione um usuário disponível.', 400)
+  return authenticate(credentials)
+}
+
+function appointmentView(item) {
+  return { ...item, paciente: item.paciente.nome, medico: item.medico.nome,
+    medicoId: item.medico.id, pacienteId: item.paciente.id,
+    especialidade: item.medico.especialidade, tipo: item.medico.especialidade }
+}
+
+export async function getAppointments() {
+  const session = await getCurrentUser()
+  const path = session.perfil === 'ADMIN' ? '/api/v1/agendamentos' : '/api/v1/agendamentos/me'
+  let page = 0
+  const items = []
+  let result
+  do {
+    result = await request(path + '?' + new URLSearchParams({ page, size: 100 }))
+    items.push(...result.content.map(appointmentView))
+    page += 1
+  } while (page < result.totalPages)
+  return items
+}
+
+export async function getSpecialties() {
+  let page = 0
+  const doctors = []
+  let result
+  do {
+    result = await request('/api/v1/medicos?' + new URLSearchParams({ page, size: 100 }))
+    doctors.push(...result.content.filter(item => item.ativo))
+    page += 1
+  } while (page < result.totalPages)
+  return doctors.map(item => ({ id: String(item.id), medicoId: item.id, nome: item.especialidade + ' · ' + item.nome }))
+}
+
+export async function getAvailableTimes(doctorId, day) {
+  return request('/api/v1/medicos/' + doctorId + '/horarios-disponiveis?' + new URLSearchParams({ data: day }))
+}
+
+export function bookAppointment(values) {
+  return request('/api/v1/agendamentos', {
+    method: 'POST',
+    body: JSON.stringify({ medicoId: Number(values.especialidade), inicio: values.inicio, ...(values.pacienteId ? { pacienteId: Number(values.pacienteId) } : {}) }),
+  })
+}
+export async function getClinic() {
+  if (USE_MOCK) return request('/mock/clinica')
+  return { nome: 'Agenda Médica', medicos: (await listDoctors()).filter(item => item.ativo) }
+}
+export async function listAll(path, filters = {}) {
+  const items = []
+  let page = 0
+  let result
+  do {
+    result = await request(path + '?' + new URLSearchParams({ ...filters, page, size: 100 }))
+    items.push(...result.content)
+    page += 1
+  } while (page < result.totalPages)
+  return items
+}
+
+export const listDoctors = () => listAll('/api/v1/medicos')
+export const saveDoctor = (values, id) => request('/api/v1/medicos' + (id ? '/' + id : ''), { method: id ? 'PATCH' : 'POST', body: JSON.stringify(values) })
+export const getDoctorSchedule = id => request('/api/v1/medicos/' + id + '/agenda')
+export const saveDoctorSchedule = (id, janelas) => request('/api/v1/medicos/' + id + '/agenda', { method: 'PUT', body: JSON.stringify({ janelas }) })
+export const listBlocks = id => request('/api/v1/medicos/' + id + '/bloqueios')
+export const createBlock = (id, values) => request('/api/v1/medicos/' + id + '/bloqueios', { method: 'POST', body: JSON.stringify(values) })
+export const removeBlock = (id, blockId) => request('/api/v1/medicos/' + id + '/bloqueios/' + blockId, { method: 'DELETE' })
+export const updateProfile = values => request('/api/v1/usuarios/me', { method: 'PATCH', body: JSON.stringify(values) })
+export const getProfile = () => request('/api/v1/usuarios/me')
+export const listNotifications = unread => listAll('/api/v1/notificacoes/me', { somenteNaoLidas: unread })
+export const readNotification = id => request('/api/v1/notificacoes/' + id + '/leitura', { method: 'PATCH' })
+export const cancelAppointment = (id, motivo) => request('/api/v1/agendamentos/' + id + '/cancelamento', { method: 'PATCH', body: JSON.stringify({ motivo }) })
+export const rescheduleAppointment = (id, inicio, motivo) => request('/api/v1/agendamentos/' + id + '/reagendamento', { method: 'PATCH', body: JSON.stringify({ inicio, motivo }) })
+
+
+

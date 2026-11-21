@@ -1,4 +1,4 @@
-export const profiles = ['ADMIN', 'PACIENTE', 'MEDICO', 'RECEPCIONISTA']
+export const profiles = ['ADMIN', 'PACIENTE', 'MEDICO']
 
 export function validateUser(values, editing = false) {
   if (!values.nome.trim() || values.nome.trim().length > 120) return 'Informe um nome de até 120 caracteres.'
@@ -11,3 +11,4 @@ export function validateUser(values, editing = false) {
   }
   return ''
 }
+

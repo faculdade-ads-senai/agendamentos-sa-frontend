@@ -1,0 +1,231 @@
+{
+  "login": {
+    "accessToken": "mock-user-",
+    "tokenType": "Bearer",
+    "expiresIn": 3600
+  },
+  "credentials": [
+    {
+      "userId": 1,
+      "email": "admin@agenda.local",
+      "senha": "123"
+    },
+    {
+      "userId": 2,
+      "email": "ana@agenda.local",
+      "senha": "123"
+    },
+    {
+      "userId": 3,
+      "email": "lucas@agenda.local",
+      "senha": "123"
+    }
+  ],
+  "users": [
+    {
+      "id": 1,
+      "nome": "Administrador",
+      "email": "admin@agenda.local",
+      "perfil": "ADMIN",
+      "ativo": true,
+      "criadoEm": "2026-11-21T09:00:00-03:00",
+      "atualizadoEm": "2026-11-21T09:00:00-03:00"
+    },
+    {
+      "id": 2,
+      "nome": "Ana Silva",
+      "email": "ana@agenda.local",
+      "perfil": "PACIENTE",
+      "ativo": true,
+      "criadoEm": "2026-11-21T09:00:00-03:00",
+      "atualizadoEm": "2026-11-21T09:00:00-03:00"
+    },
+    {
+      "id": 3,
+      "nome": "Lucas Ferreira",
+      "email": "lucas@agenda.local",
+      "perfil": "MEDICO",
+      "ativo": true,
+      "criadoEm": "2026-11-21T09:00:00-03:00",
+      "atualizadoEm": "2026-11-21T09:00:00-03:00"
+    },
+    {
+      "id": 4,
+      "nome": "Marina Costa",
+      "email": "marina@agenda.local",
+      "perfil": "ADMIN",
+      "ativo": false,
+      "criadoEm": "2026-11-21T09:00:00-03:00",
+      "atualizadoEm": "2026-11-21T09:00:00-03:00"
+    }
+  ],
+  "page": {
+    "content": [],
+    "page": 0,
+    "size": 20,
+    "totalElements": 0,
+    "totalPages": 0
+  },
+  "clinica": {
+    "descricao": "Conheça nossa equipe e encontre um horário para sua próxima consulta.",
+    "nome": "Agenda Médica",
+    "orientacoes": "Para sua consulta, tenha em mãos um documento com foto e os exames que deseja compartilhar com o médico.",
+    "apresentacao": "Seu cuidado começa por aqui."
+  },
+  "medicos": [
+    {
+      "id": 3,
+      "crm": "123456",
+      "atualizadoEm": "2026-11-21T09:00:00-03:00",
+      "email": "lucas@agenda.local",
+      "ativo": true,
+      "ufCrm": "SP",
+      "criadoEm": "2026-11-21T09:00:00-03:00",
+      "nome": "Lucas Ferreira",
+      "especialidade": "Clínica geral"
+    }
+  ],
+  "agendamentos": [
+    {
+      "fim": "2026-11-21T09:45:00-03:00",
+      "inicio": "2026-11-21T09:00:00-03:00",
+      "atualizadoEm": "2026-11-20T09:00:00-03:00",
+      "status": "CONCLUIDA",
+      "id": 1,
+      "criadoEm": "2026-11-20T09:00:00-03:00",
+      "medico": {
+        "nome": "Lucas Ferreira",
+        "especialidade": "Clínica geral",
+        "id": 3
+      },
+      "paciente": {
+        "nome": "Ana Silva",
+        "id": 2
+      }
+    },
+    {
+      "fim": "2026-11-21T14:30:00-03:00",
+      "inicio": "2026-11-21T14:00:00-03:00",
+      "atualizadoEm": "2026-11-20T09:00:00-03:00",
+      "status": "AGENDADA",
+      "id": 2,
+      "criadoEm": "2026-11-20T09:00:00-03:00",
+      "medico": {
+        "nome": "Lucas Ferreira",
+        "especialidade": "Clínica geral",
+        "id": 3
+      },
+      "paciente": {
+        "nome": "Pedro Almeida",
+        "id": 102
+      }
+    },
+    {
+      "fim": "2026-11-23T11:15:00-03:00",
+      "inicio": "2026-11-23T10:30:00-03:00",
+      "atualizadoEm": "2026-11-20T09:00:00-03:00",
+      "status": "AGENDADA",
+      "id": 3,
+      "criadoEm": "2026-11-20T09:00:00-03:00",
+      "medico": {
+        "nome": "Lucas Ferreira",
+        "especialidade": "Clínica geral",
+        "id": 3
+      },
+      "paciente": {
+        "nome": "Beatriz Santos",
+        "id": 103
+      }
+    },
+    {
+      "fim": "2026-12-01T11:00:00-03:00",
+      "inicio": "2026-12-01T10:15:00-03:00",
+      "atualizadoEm": "2026-11-20T09:00:00-03:00",
+      "status": "AGENDADA",
+      "id": 4,
+      "criadoEm": "2026-11-20T09:00:00-03:00",
+      "medico": {
+        "nome": "Lucas Ferreira",
+        "especialidade": "Clínica geral",
+        "id": 3
+      },
+      "paciente": {
+        "nome": "Ana Silva",
+        "id": 2
+      }
+    }
+  ],
+  "agendas": [
+    {
+      "janelas": [
+        {
+          "diaSemana": 1,
+          "horaFim": "17:00",
+          "horaInicio": "08:00",
+          "duracaoMinutos": 45
+        },
+        {
+          "diaSemana": 2,
+          "horaFim": "17:00",
+          "horaInicio": "08:00",
+          "duracaoMinutos": 45
+        },
+        {
+          "diaSemana": 3,
+          "horaFim": "17:00",
+          "horaInicio": "08:00",
+          "duracaoMinutos": 45
+        },
+        {
+          "diaSemana": 4,
+          "horaFim": "17:00",
+          "horaInicio": "08:00",
+          "duracaoMinutos": 45
+        },
+        {
+          "diaSemana": 5,
+          "horaFim": "17:00",
+          "horaInicio": "08:00",
+          "duracaoMinutos": 45
+        }
+      ],
+      "medicoId": 3
+    }
+  ],
+  "bloqueios": [
+    {
+      "medicoId": 3,
+      "inicio": "2026-12-02T08:00:00-03:00",
+      "motivo": "Reunião da equipe",
+      "id": 1,
+      "fim": "2026-12-02T10:00:00-03:00",
+      "ativo": true
+    }
+  ],
+  "notificacoes": [
+    {
+      "status": "ENVIADA",
+      "id": 1,
+      "lidaEm": null,
+      "usuarioId": 2,
+      "canal": "SISTEMA",
+      "tipo": "CONFIRMACAO",
+      "agendamentoId": 1,
+      "enviadaEm": "2026-11-21T09:00:00-03:00",
+      "mensagem": "Sua consulta de Clínica geral foi confirmada.",
+      "criadaEm": "2026-11-21T09:00:00-03:00"
+    },
+    {
+      "id": 2,
+      "canal": "SISTEMA",
+      "agendamentoId": 4,
+      "usuarioId": 3,
+      "mensagem": "Nova consulta de Ana Silva agendada para 01/12/2026 às 10:15.",
+      "status": "ENVIADA",
+      "enviadaEm": "2026-11-21T10:00:00-03:00",
+      "lidaEm": null,
+      "tipo": "CONFIRMACAO",
+      "criadaEm": "2026-11-21T10:00:00-03:00"
+    }
+  ]
+}
