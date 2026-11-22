@@ -7,7 +7,7 @@ import PatientAppointments from './agenda/PatientAppointments.jsx'
 import Booking from './agenda/Booking.jsx'
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import { USE_MOCK, authenticateMockUser, getMockLoginUsers, authenticate, clearSession, getCurrentUser, readSession } from './api.jsx'
+import { USE_MOCK, authenticateMockUser, getMockLoginUsers, startGoogleLogin, logoutSession, clearSession, getCurrentUser } from './api.jsx'
 import './style.css'
 import Users from './users/Users.jsx'
 import Agenda from './agenda/Agenda.jsx'
@@ -19,7 +19,6 @@ function App() {
   const [booking, setBooking] = useState(false)
   const [user, setUser] = useState(null)
   const [checking, setChecking] = useState(true)
-  const [visible, setVisible] = useState(false)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [hash, setHash] = useState(window.location.hash)
@@ -52,12 +51,11 @@ function App() {
   useEffect(() => {
     let active = true
     const version = generation.current
-    if (!readSession()) {
-      setChecking(false)
-      return
-    }
-    getCurrentUser().then(current => { if (active && version === generation.current) setUser(current) })
-      .catch(problem => { if (active && version === generation.current) setError(problem.message) })
+    try {
+      for (const key of ['agenda-sa.session', 'agenda-sa.mock-session']) sessionStorage.removeItem(key)
+    } catch { /* Browser storage may be unavailable. */ }
+    getCurrentUser({ authenticated: false }).then(current => { if (active && version === generation.current) setUser(current) })
+      .catch(problem => { if (active && version === generation.current && problem.status !== 401) setError(problem.message) })
       .finally(() => { if (active) setChecking(false) })
     return () => { active = false }
   }, [])
@@ -67,20 +65,23 @@ function App() {
       generation.current += 1
       clearSession()
       setUser(null)
-    setBooking(false)
-    setInboxOpen(false)
+      setBooking(false)
+      setInboxOpen(false)
       setError('Sua sessão expirou. Entre novamente.')
     }
     window.addEventListener('session-expired', expired)
-    const session = user ? readSession() : null
-    let timer
-    if (user && !session) expired()
-    else if (session) timer = window.setTimeout(expired, Math.max(0, session.expiresAt - Date.now()))
-    return () => {
-      window.removeEventListener('session-expired', expired)
-      window.clearTimeout(timer)
-    }
-  }, [user])
+    return () => window.removeEventListener('session-expired', expired)
+  }, [])
+
+  useEffect(() => {
+    const url = new URL(window.location.href)
+    const code = url.searchParams.get('auth_error')
+    if (!code) return
+    setError(code === 'invite_invalid' ? 'Convite inválido ou expirado. Solicite um novo convite.'
+      : 'Não foi possível entrar com Google. O acesso pode ter sido cancelado ou a conta não estar autorizada. Verifique seu convite ou fale com a administração.')
+    url.searchParams.delete('auth_error')
+    window.history.replaceState(null, '', url)
+  }, [])
 
   async function submit(event) {
     event.preventDefault()
@@ -89,9 +90,8 @@ function App() {
     setBusy(true)
     try {
       if (USE_MOCK) await authenticateMockUser(fields.get('mockUser'))
-      else await authenticate({ email: fields.get('email'), password: fields.get('password') })
+      else { startGoogleLogin(); return }
       setUser(await getCurrentUser())
-      setVisible(false)
     } catch (problem) {
       setError(problem.message)
     } finally {
@@ -99,14 +99,33 @@ function App() {
     }
   }
 
-  function logout() {
+  async function logout() {
+    if (busy) return
+    setBusy(true)
+    setError('')
+    try {
+      await logoutSession()
+    } catch (problem) {
+      try {
+        await getCurrentUser({ authenticated: false })
+        setError('Não foi possível encerrar a sessão. Tente novamente.')
+        setBusy(false)
+        return
+      } catch (check) {
+        if (check.status !== 401) {
+          setError('Não foi possível confirmar o encerramento da sessão. Tente novamente.')
+          setBusy(false)
+          return
+        }
+      }
+    }
     generation.current += 1
     clearSession()
     setUser(null)
     setBooking(false)
     setInboxOpen(false)
-    setVisible(false)
     setError('')
+    setBusy(false)
     window.location.hash = ''
   }
 
@@ -121,7 +140,7 @@ function App() {
     return <main className="min-h-dvh bg-paper text-ink">
       <header className="border-b border-ink/15 bg-pine text-white">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-5 py-5 md:px-8">
-          <a href="#/" className="flex items-center gap-3 font-semibold"><span aria-hidden="true" className="grid size-9 place-items-center rounded-xl bg-mint text-2xl text-pine">+</span>Agenda Médica</a>
+          <a href="#/" className="flex items-center gap-3 font-semibold"><span aria-hidden="true" className="grid size-9 place-items-center rounded-xl bg-mint text-2xl text-pine">+</span>Agenda SA</a>
           <nav aria-label="Navegação principal" className="flex flex-wrap items-center gap-5 text-sm">
             <a href="#/" aria-current={!usersPage && !agendaPage && !appointmentsPage && !doctorsPage && !profilePage ? 'page' : undefined} className="hover:underline">Início</a>
             {!admin && <a href="#/minhas-consultas" aria-current={appointmentsPage ? "page" : undefined} className="hover:underline">Minhas consultas</a>}
@@ -137,16 +156,16 @@ function App() {
             </button>
             <a href="#/cadastro" aria-current={profilePage ? 'page' : undefined} className="hover:underline">Meu cadastro</a>
             <span>{user.nome} · {user.perfil}</span>
-            <button onClick={logout} className="rounded-xl border border-white/40 px-4 py-2 hover:bg-white/10">Sair</button>
+            <button disabled={busy} onClick={logout} className="rounded-xl border border-white/40 px-4 py-2 hover:bg-white/10">{busy ? 'Saindo…' : 'Sair'}</button>
           </nav>
         </div>
       </header>
       <div className="mx-auto max-w-6xl px-5 py-10 md:px-8">
         {error && <p role="alert" className="mb-5 rounded-xl bg-red-50 p-4 text-sm text-red-800">{error}</p>}
-        {profilePage ? <Profile onUpdated={onSelfChange} /> : admin && doctorsPage ? <Doctors /> : agendaPage ? <Agenda /> : appointmentsPage ? <><PatientAppointments key={user.id} user={user} refresh={booking} />{admin && <button onClick={() => setBooking(true)} className="mt-6 rounded-xl bg-pine px-5 py-3 text-sm font-semibold text-white">Novo agendamento</button>}</> : patient && !usersPage ? <PatientHome user={user} onBook={() => setBooking(true)} /> : admin && usersPage ? <Users key={user.id} hash={hash} user={user} onForbidden={onForbidden} onSelfChange={onSelfChange} /> : <>
+        {profilePage ? <Profile user={user} onUpdated={onSelfChange} /> : admin && doctorsPage ? <Doctors /> : agendaPage ? <Agenda /> : appointmentsPage ? <><PatientAppointments key={user.id} user={user} refresh={booking} />{admin && <button onClick={() => setBooking(true)} className="mt-6 rounded-xl bg-pine px-5 py-3 text-sm font-semibold text-white">Novo agendamento</button>}</> : patient && !usersPage ? <PatientHome user={user} onBook={() => setBooking(true)} /> : admin && usersPage ? <Users key={user.id} hash={hash} user={user} onForbidden={onForbidden} onSelfChange={onSelfChange} /> : <>
           {!admin && usersPage && <p role="alert" className="mb-5 rounded-xl bg-red-50 p-4 text-sm text-red-800">A administração de usuários é exclusiva do perfil ADMIN.</p>}
           <h1 className="font-serif text-4xl md:text-5xl">Olá, {user.nome}</h1>
-          <p className="mt-5 text-ink/75">Você está conectado à Agenda Médica.</p>
+          <p className="mt-5 text-ink/75">Você está conectado à Agenda SA.</p>
           {user.perfil === "PACIENTE" && <button onClick={() => setBooking(true)} className="mt-8 rounded-xl bg-pine px-5 py-3 text-sm font-semibold text-white hover:bg-ink">Agendar consulta</button>}
 
           {admin && <a href="#/usuarios" className="mt-8 inline-block rounded-xl bg-pine px-5 py-3 text-sm font-semibold text-white hover:bg-ink">Gerenciar usuários</a>}
@@ -162,7 +181,7 @@ function App() {
       <aside className="agenda-pattern flex flex-col justify-between rounded-3xl bg-pine px-7 py-6 text-white md:min-h-[calc(100dvh-3rem)] md:p-12 xl:p-16">
         <div className="flex items-center gap-3 font-semibold tracking-tight">
           <span aria-hidden="true" className="grid size-10 place-items-center rounded-xl bg-mint text-2xl text-pine">+</span>
-          Agenda Médica
+          Agenda SA
         </div>
         <div className="hidden md:block">
           <div aria-hidden="true" className="mb-9 grid max-w-64 grid-cols-7 gap-2">
@@ -178,7 +197,8 @@ function App() {
         <div className="w-full max-w-sm">
           {checking ? <p role="status">Verificando sua sessão…</p> : <>
             <h1 className="font-serif text-5xl tracking-tight">Bem-vindo</h1>
-            <p className="mt-3 text-sm text-ink/75">{USE_MOCK ? 'Selecione uma conta para entrar.' : 'Informe seu e-mail e sua senha.'}</p>
+            {USE_MOCK && <p role="status" className="mt-3 font-semibold text-pine">Modo demonstração — sem conexão com a API</p>}
+            <p className="mt-3 text-sm text-ink/75">{USE_MOCK ? 'Selecione uma conta para entrar.' : 'Acesse suas consultas com sua conta Google autorizada.'}</p>
             <form onSubmit={submit} onChange={() => setError('')} className="mt-9 grid gap-5">
               {USE_MOCK ? <div>
                 <label htmlFor="mock-user" className="mb-2 block text-sm font-semibold">Usuário</label>
@@ -186,21 +206,10 @@ function App() {
                   <option value="" disabled>Selecione um usuário</option>
                   {getMockLoginUsers().map(account => <option key={account.id} value={account.id}>{account.nome} · {account.perfil}</option>)}
                 </select>
-              </div> : <>
-              <div>
-                <label htmlFor="email" className="mb-2 block text-sm font-semibold">E-mail</label>
-                <input className={inputClass} id="email" name="email" type="email" autoComplete="username" maxLength={254} placeholder="nome@exemplo.com" required disabled={busy} />
-              </div>
-              <div>
-                <label htmlFor="password" className="mb-2 block text-sm font-semibold">Senha</label>
-                <div className="relative">
-                  <input className={`${inputClass} pr-24`} id="password" name="password" type={visible ? 'text' : 'password'} autoComplete="current-password" maxLength={72} required disabled={busy} />
-                  <button type="button" className="absolute inset-y-0 right-0 px-4 text-sm font-semibold text-pine hover:underline" onClick={() => setVisible(!visible)}>{visible ? 'Ocultar' : 'Mostrar'}</button>
-                </div>
-              </div>
-              </>}
+              </div> : null}
               {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800">{error}</p>}
-              <button disabled={busy} className="mt-1 w-full rounded-xl bg-pine px-5 py-3.5 text-sm font-semibold text-white hover:bg-ink disabled:opacity-60">{busy ? 'Aguarde…' : 'Entrar'}</button>
+              {error && <button type="button" onClick={() => window.location.reload()} className="text-sm font-semibold text-pine underline">Verificar sessão novamente</button>}
+              <button disabled={busy} className="mt-1 w-full rounded-xl bg-pine px-5 py-3.5 text-sm font-semibold text-white hover:bg-ink disabled:opacity-60">{busy ? 'Aguarde…' : USE_MOCK ? 'Entrar na demonstração' : 'Entrar com Google'}</button>
             </form>
           </>}
         </div>

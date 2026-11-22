@@ -32,7 +32,7 @@ export function notify(appointment, actor, type, users) {
   }
 }
 
-export function handleMockResources({ url, method, body, current, users, appointments, credentials, response, error, paginate }) {
+export function handleMockResources({ url, method, body, current, users, appointments, response, error, paginate }) {
   const path = url.pathname
   const admin = current.perfil === 'ADMIN'
   if (path === '/api/v1/usuarios/me') {
@@ -43,8 +43,7 @@ export function handleMockResources({ url, method, body, current, users, appoint
     if (body.nome) current.nome = body.nome.trim()
     if (body.email) {
       current.email = body.email.trim().toLowerCase()
-      const account = credentials.find(item => item.userId === current.id)
-      if (account) account.email = current.email
+
     }
     current.atualizadoEm = new Date().toISOString()
     return response(current)
@@ -101,7 +100,6 @@ export function handleMockResources({ url, method, body, current, users, appoint
       doctors.push(created)
       const userId = Math.max(0, ...users.map(item => item.id)) + 1
       users.push({ id: userId, nome: body.nome, email: body.email, perfil: 'MEDICO', ativo: true, criadoEm: now, atualizadoEm: now })
-      credentials.push({ userId, email: body.email, senha: 'Demo@1234' })
       return response(created, 201)
     }
     return response(doctor)

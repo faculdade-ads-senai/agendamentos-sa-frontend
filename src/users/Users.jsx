@@ -1,5 +1,7 @@
+import PersonalFields from './PersonalFields.jsx'
+import { emptyPersonal, oldBirth } from './personal.js'
 import React, { useEffect, useRef, useState } from 'react'
-import { deactivateUser, getUser, listUsers, saveUser } from '../api.jsx'
+import { deactivateUser, getUser, listUsers, saveUser, createInvite, getPersonal } from '../api.jsx'
 import { profiles, validateUser } from './validation.js'
 
 const inputClass = 'w-full rounded-xl border border-ink/20 bg-white px-4 py-3 text-sm outline-none focus:border-pine focus:ring-2 focus:ring-pine/25'
@@ -51,8 +53,28 @@ function UserList({ page, setPage, user, onForbidden, onSelfChange, setNotice })
   const [loading, setLoading] = useState(true)
   const [refresh, setRefresh] = useState(0)
   const [busy, setBusy] = useState(null)
+  const [invite, setInvite] = useState(null)
   const pending = useRef(false)
   const mounted = useMounted()
+
+  async function issueInvite(target) {
+    if (pending.current) return
+    if (!window.confirm('Gerar convite? Um convite anterior ainda pendente será revogado.')) return
+    pending.current = true
+    setBusy(target.id)
+    setError('')
+    setInvite(null)
+    try {
+      const result = await createInvite(target.id)
+      if (mounted.current) setInvite(result)
+    } catch (problem) {
+      if (mounted.current) setError(problem.message)
+      if (problem.status === 403) onForbidden()
+    } finally {
+      pending.current = false
+      if (mounted.current) setBusy(null)
+    }
+  }
 
   useEffect(() => {
     let active = true
@@ -101,6 +123,19 @@ function UserList({ page, setPage, user, onForbidden, onSelfChange, setNotice })
 
   return <>
     <Alert>{error}</Alert>
+    {invite && <section role="dialog" aria-modal="false" aria-label="Convite gerado" className="my-4 rounded-xl border border-pine/30 bg-white p-5">
+      <p>Convite válido até {new Date(invite.expiraEm).toLocaleString('pt-BR')}.</p>
+      <label className="mt-3 block text-sm">Link do convite
+        <input readOnly value={invite.link} onFocus={event => event.target.select()} className={inputClass} />
+      </label>
+      <div className="mt-3 flex gap-3">
+        <button className={secondaryClass} onClick={async () => {
+          try { await navigator.clipboard.writeText(invite.link); setNotice('Link copiado.') }
+          catch { setNotice('Selecione o link acima e copie manualmente.') }
+        }}>Copiar link</button>
+        <button className={secondaryClass} onClick={() => setInvite(null)}>Fechar convite</button>
+      </div>
+    </section>}
     {error && <button className={secondaryClass} onClick={() => setRefresh(value => value + 1)} disabled={loading || busy != null}>Tentar novamente</button>}
     {loading ? <p role="status" className="py-10">Carregando usuários…</p> : data && <>
       <div className="overflow-x-auto rounded-2xl border border-ink/15 bg-white">
@@ -111,10 +146,11 @@ function UserList({ page, setPage, user, onForbidden, onSelfChange, setNotice })
             <td className="px-5 py-4 font-semibold">{target.nome}{target.id === user.id && <span className="ml-2 text-xs font-normal">(você)</span>}</td>
             <td className="px-5 py-4">{target.email}</td>
             <td className="px-5 py-4">{target.perfil}</td>
-            <td className="px-5 py-4"><span className={`rounded-full px-3 py-1 text-xs ${target.ativo ? 'bg-mint text-pine' : 'bg-ink/10 text-ink/70'}`}>{target.ativo ? 'Ativo' : 'Inativo'}</span></td>
+            <td className="px-5 py-4"><span className={`rounded-full px-3 py-1 text-xs ${target.ativo ? 'bg-mint text-pine' : 'bg-ink/10 text-ink/70'}`}>{target.ativo ? 'Ativo' : 'Inativo'}</span><span className="mt-2 block text-xs">{target.statusCadastro}{target.master ? ' · Master' : ''}{!target.cadastroCompleto ? ' · Cadastro incompleto' : ''}</span></td>
             <td className="px-5 py-4"><div className="flex gap-4">
+              {target.ativo && !target.master && !target.ativadoEm && <button disabled={busy != null} onClick={() => issueInvite(target)} className="font-semibold text-pine disabled:opacity-50">Gerar convite</button>}
               {busy == null ? <a href={`#/usuarios/${target.id}/editar`} className="font-semibold text-pine underline" aria-label={`Editar ${target.nome}`}>Editar</a> : <span className="text-ink/40">Editar</span>}
-              <button disabled={!target.ativo || busy != null} onClick={() => inactivate(target)} className="font-semibold text-red-800 underline disabled:text-ink/40 disabled:no-underline" aria-label={`Inativar ${target.nome}`}>{busy === target.id ? 'Inativando…' : 'Inativar'}</button>
+              <button disabled={target.master || !target.ativo || busy != null} onClick={() => inactivate(target)} className="font-semibold text-red-800 underline disabled:text-ink/40 disabled:no-underline" aria-label={`Inativar ${target.nome}`}>{busy === target.id ? 'Aguarde…' : 'Inativar'}</button>
             </div></td>
           </tr>)}
             {data.content.length === 0 && <tr><td colSpan={5} className="px-5 py-10 text-center text-ink/65">Nenhum usuário cadastrado.</td></tr>}
@@ -134,13 +170,13 @@ function UserList({ page, setPage, user, onForbidden, onSelfChange, setNotice })
 
 function UserForm({ id, user, onSaved, onForbidden, onSelfChange }) {
   const editing = id != null
-  const [values, setValues] = useState({ nome: '', email: '', senha: '', perfil: '', ativo: true })
+  const [original, setOriginal] = useState(null)
+  const [values, setValues] = useState({ nome: '', email: '', perfil: '', ativo: true, ...emptyPersonal, enviarDadosPessoais: !editing })
   const [loading, setLoading] = useState(editing)
   const [loadError, setLoadError] = useState(false)
   const [error, setError] = useState('')
   const [refresh, setRefresh] = useState(0)
   const [busy, setBusy] = useState(false)
-  const [visible, setVisible] = useState(false)
   const pending = useRef(false)
   const mounted = useMounted()
 
@@ -150,8 +186,11 @@ function UserForm({ id, user, onSaved, onForbidden, onSelfChange }) {
     setLoading(true)
     setError('')
     setLoadError(false)
-    getUser(id).then(result => {
-      if (active) setValues({ nome: result.nome, email: result.email, perfil: result.perfil, ativo: result.ativo, senha: '' })
+    Promise.all([getUser(id), getPersonal(id)]).then(([result, personal]) => {
+      if (active) {
+        setOriginal(result)
+        setValues({ nome: result.nome, email: result.email, perfil: result.perfil, ativo: result.ativo, ...emptyPersonal, ...Object.fromEntries(Object.entries(personal).filter(([key]) => key in emptyPersonal).map(([key, value]) => [key, value ?? ''])), enviarDadosPessoais: personal.cadastroCompleto })
+      }
     }).catch(problem => {
       if (!active) return
       setLoadError(true)
@@ -175,6 +214,7 @@ function UserForm({ id, user, onSaved, onForbidden, onSelfChange }) {
     if (validation) { setError(validation); return }
     if (editing && id === user.id && !values.ativo
         && !window.confirm('Inativar sua própria conta? Sua sessão será encerrada.')) return
+    if (values.enviarDadosPessoais && oldBirth(values.dataNascimento) && !window.confirm('Nascimento anterior a 120 anos. Confirma a data informada?')) return
     pending.current = true
     setBusy(true)
     setError('')
@@ -202,19 +242,18 @@ function UserForm({ id, user, onSaved, onForbidden, onSelfChange }) {
     </div> : <form onSubmit={submit} className="max-w-2xl rounded-2xl border border-ink/15 bg-white p-5 md:p-8">
       <fieldset disabled={busy} className="grid gap-5 disabled:opacity-70">
         <legend className="sr-only">{editing ? 'Dados do usuário' : 'Dados do novo usuário'}</legend>
-        <div><label htmlFor="user-name" className="mb-2 block text-sm font-semibold">Nome</label>
+        <p className="text-sm text-ink/70">* Campos obrigatórios. Dados pessoais são protegidos pelo servidor.</p>
+        <div><label htmlFor="user-name" className="mb-2 block text-sm font-semibold">Nome completo *</label>
           <input id="user-name" name="nome" className={inputClass} value={values.nome} onChange={change} maxLength={120} autoComplete="off" required /></div>
-        <div><label htmlFor="user-email" className="mb-2 block text-sm font-semibold">E-mail</label>
-          <input id="user-email" name="email" type="email" className={inputClass} value={values.email} onChange={change} maxLength={254} autoComplete="off" required /></div>
-        <div><label htmlFor="user-password" className="mb-2 block text-sm font-semibold">{editing ? 'Nova senha (opcional)' : 'Senha'}</label>
-          <div className="relative"><input id="user-password" name="senha" type={visible ? 'text' : 'password'} className={`${inputClass} pr-24`} value={values.senha} onChange={change} autoComplete="new-password" minLength={8} maxLength={72} required={!editing} aria-describedby="password-help" />
-            <button type="button" className="absolute inset-y-0 right-0 px-4 text-sm font-semibold text-pine" onClick={() => setVisible(!visible)}>{visible ? 'Ocultar' : 'Mostrar'}</button></div>
-          <p id="password-help" className="mt-2 text-xs text-ink/70">{editing && 'Deixe em branco para manter a senha atual. '}Use de 8 a 72 caracteres e no máximo 72 bytes UTF-8.</p></div>
-        <div><label htmlFor="user-profile" className="mb-2 block text-sm font-semibold">Perfil</label>
-          <select id="user-profile" name="perfil" className={inputClass} value={values.perfil} onChange={change} required>
+        <div><label htmlFor="user-email" className="mb-2 block text-sm font-semibold">E-mail *</label>
+          <input id="user-email" name="email" type="email" className={inputClass} value={values.email} readOnly={Boolean(original?.master || original?.ativadoEm)} onChange={change} maxLength={254} autoComplete="off" required /></div>
+        <div><label htmlFor="user-profile" className="mb-2 block text-sm font-semibold">Perfil *</label>
+          <select id="user-profile" name="perfil" className={inputClass} value={values.perfil} disabled={original?.master || id === user.id} onChange={change} required>
             <option value="" disabled>Selecione um perfil</option>{profiles.map(profile => <option key={profile} value={profile}>{profile}</option>)}
           </select></div>
-        {editing && <label className="flex items-center gap-3 text-sm font-semibold"><input name="ativo" type="checkbox" checked={values.ativo} onChange={change} className="size-4 accent-pine" />Usuário ativo</label>}
+        {editing && !original?.cadastroCompleto && <label className="flex items-center gap-3 text-sm"><input type="checkbox" name="enviarDadosPessoais" checked={values.enviarDadosPessoais} onChange={change} />Regularizar cadastro incompleto</label>}
+        {(!editing || values.enviarDadosPessoais) && <PersonalFields values={values} required onChange={(name, value) => setValues(previous => ({ ...previous, [name]: value }))} />}
+        {editing && <label className="flex items-center gap-3 text-sm font-semibold"><input name="ativo" type="checkbox" disabled={original?.master} checked={values.ativo} onChange={change} className="size-4 accent-pine" />Usuário ativo</label>}
         <div className="flex flex-wrap items-center gap-4 pt-2">
           <button className={buttonClass}>{busy ? 'Salvando…' : editing ? 'Salvar alterações' : 'Criar usuário'}</button>
           {!busy && <a href="#/usuarios" className={secondaryClass}>Cancelar</a>}
